@@ -1,6 +1,7 @@
+import praw
 import requests
 from bs4 import BeautifulSoup
-import praw
+
 import sys
 from typing import List
 import json
@@ -8,6 +9,7 @@ import os
 import time
 import datetime
 import traceback
+
 
 class Forum:
     def __init__(self, task_name, start_url, wait_time):
@@ -17,9 +19,9 @@ class Forum:
 
         self.session = requests.Session()
         self.setup_session()
-    
+
         self.posts = None
-    
+
     def setup_session(self):
         """
             _summary_: Setup session
@@ -28,13 +30,13 @@ class Forum:
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36'
         }
         self.session.headers.update(headers)
-    
+
     def get_forum_pages(self):
         """
             _summary_: Get all pages links of the forum
         """
         return NotImplementedError()
-    
+
     def get_forum_content(self, page_url):
         """
             _summary_: Get all content of the forum
@@ -45,7 +47,7 @@ class Forum:
                 - votes of comments
         """
         return NotImplementedError()
-    
+
     def obtain_content(self):
         """
             _summary_: Obtain content from each post
@@ -53,15 +55,15 @@ class Forum:
         list_of_content = []
         for post in self.posts:
             list_of_content.append(self.get_forum_content(post))
-        
+
         self.content = list_of_content
-    
+
     def save_content(self):
         """
             _summary_: Save list_of_content to a file
         """
         return NotImplementedError()
-    
+
     @classmethod
     def filter_func(cls, tag, prefix):
         if tag.has_attr('class'):
@@ -69,6 +71,7 @@ class Forum:
             # return class_str.startswith('node node--id')
             return class_str.startswith(prefix)
         return False
+
 
 class MentalHealth(Forum):
     def __init__(self, task_name, start_url, wait_time):
@@ -82,7 +85,7 @@ class MentalHealth(Forum):
         soup = BeautifulSoup(response.text, 'html.parser')
         for link in soup.find_all(lambda tag: self.filter_func(tag, 'node node--id')):
             sub_forums.append(link.find('a')['href'])
-        
+
         # get all posts from each forum
         posts = []
         for sub_forum in sub_forums:
@@ -90,7 +93,7 @@ class MentalHealth(Forum):
             soup = BeautifulSoup(response.text, 'html.parser')
             for link in soup.find_all(lambda tag: self.filter_func(tag, 'structItem structItem--thread')):
                 posts.append(link['href'])
-        
+
         self.posts = posts
 
     def get_forum_content(self, page_url):
@@ -106,14 +109,14 @@ class MentalHealth(Forum):
                 content = content.text
             else:
                 continue
-            
+
             footer = article.find('ul', {'class': 'sv-rating-bar__ratings'})
             if footer:
                 ratings = footer.find_all('li', {'class': 'sv-rating sv-rating--empty-list'})
-                rating_sum = sum([ int(rate.text) for rate in rating])
+                rating_sum = sum([int(rate.text) for rate in rating])
             else:
                 rating_sum = 0
-            
+
             list_of_content.append({
                 'author': author,
                 'content': content,
@@ -126,21 +129,28 @@ class MentalHealth(Forum):
             next_page = next_page['href']
             list_of_content += self.get_forum_content(next_page)
 
-        return list_of_content      
+        return list_of_content
 
 
 class Reddit:
-    #data_collectors = Reddit(['investing', 'wallstreetbets', 'CryptoCurrency', 'politics', 'healthcare'], 'month', 100,  cwd, time_limit=datetime.datetime(2023, 7, 1))
-    def __init__(self, subreddits, time_filter, num_posts, save_path, time_limit = None):
+    # data_collectors = Reddit(['investing', 'wallstreetbets', 'CryptoCurrency', 'politics', 'healthcare'], 'month', 100,  cwd, time_limit=datetime.datetime(2023, 7, 1))
+    def __init__(self, subreddits, time_filter, num_posts, save_path, time_limit=None):
         self.subreddits = subreddits
         self.time_filter = time_filter
         self.num_posts = num_posts
         self.save_path = save_path
         self.time_limit = time_limit
-
-        self.reddit = praw.Reddit('DataCollector')
+        self.reddit = praw.Reddit(
+            client_id="aHk3G-s2_eXOLTO_7Yptfw",
+            client_secret="o9gZYqkVcbV6G_EDzJeAJ_o7OuaXzg",
+            password="888555662Jc",
+            user_agent="chao",
+            username="Historical-Shock-882",
+        )
+        #self.reddit = praw.Reddit('DataCollector')
         self.posts = self.get_reddit_posts()
         # self.dump_posts()
+
 
     def created_after_time_limit(self, created_utc):
         if self.time_limit is None:
@@ -154,7 +164,7 @@ class Reddit:
             subreddit_ = subreddit
             subreddit = self.reddit.subreddit(subreddit)
             list_of_posts = []
-            for post in subreddit.top(time_filter = self.time_filter, limit=self.num_posts):
+            for post in subreddit.top(time_filter=self.time_filter, limit=self.num_posts):
                 created_time = post.created_utc
                 if not self.created_after_time_limit(created_time): continue
                 created_time_str = datetime.datetime.fromtimestamp(created_time).strftime('%Y-%m-%d %H:%M:%S')
@@ -183,8 +193,8 @@ class Reddit:
             self.dump_posts(list_of_posts, subreddit_)
             # all_posts[subreddit_] = list_of_posts
         # return all_posts
-    
-    def deal_with_comments(self, comments, depth = 3):
+
+    def deal_with_comments(self, comments, depth=3):
         results = []
         if depth < 0: return results
         depth -= 1
@@ -198,7 +208,8 @@ class Reddit:
             replies = comment.replies
             if len(replies):
                 replies = self.deal_with_comments(replies, depth=depth)
-            else: replies = []
+            else:
+                replies = []
             the_comment = {
                 'author': author.name if author is not None else '',
                 'content': content,
@@ -208,13 +219,15 @@ class Reddit:
             }
             results.append(the_comment)
         return results
-    
-    def dump_posts(self, list_of_posts, subreddit = None):
+
+    def dump_posts(self, list_of_posts, subreddit=None):
         path = os.path.join(self.save_path, f"{subreddit if subreddit is not None else 'all'}.json")
         with open(path, 'w') as f:
             json.dump(list_of_posts, f)
 
+
 if __name__ == '__main__':
     # should define the XDG_CONFIG_HOME to the config file
     cwd = sys.argv[1]
-    data_collectors = Reddit(['investing', 'wallstreetbets', 'CryptoCurrency', 'politics', 'healthcare'], 'month', 100, cwd, time_limit=datetime.datetime(2023, 7, 1))
+    data_collectors = Reddit(['investing', 'wallstreetbets', 'CryptoCurrency', 'politics', 'healthcare'], 'month', 100,
+                             cwd, time_limit=datetime.datetime(2023, 7, 1))
